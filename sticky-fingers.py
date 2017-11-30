@@ -15,10 +15,10 @@ def main():
     for file in files:
       if file.endswith(".png"):
         img = cv2.imread(os.path.join(root, file), 0)
-        enhanced = imageProcessing.enhance(img)
-        minutiae_img, coords = minutiae.extract(enhanced)
+        enhanced, segmented = imageProcessing.enhance(img)
+        min_img, coords = minutiae.extract(enhanced, segmented)
 
-        out = np.hstack((enhanced, minutiae_img))
+        out = np.hstack((enhanced, min_img))
         imageProcessing.displayBinary(out)
 
 main()

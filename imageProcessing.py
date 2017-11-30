@@ -40,8 +40,12 @@ def segmentation(img):
   kernel = np.ones((3, 3))
   out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel)
 
-  return out
+  dims = (len(img), len(img[0]))
+  out_img = cv2.resize(out, dims, interpolation=cv2.INTER_NEAREST)
 
+  return out_img
+
+# Enhances a fingerprint image, returns image and segmentation
 def enhance(img):
   # Parameters
   gaussianBlurSize = (5, 5)
@@ -66,4 +70,4 @@ def enhance(img):
   binary = (closed < 127) * 1
   thinned = thin(binary) * 1
 
-  return thinned
+  return thinned, segmented

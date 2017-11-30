@@ -2,51 +2,181 @@
 # Max Granat - mg46424
 
 import numpy as np
+import cv2
+from imageProcessing import displayBinary
+import queue
+
+# Returns the edges of an array as an array, wrapping aroudn
+def gridEdges(grid):
+  edges = np.concatenate([grid[0,:-1], grid[:-1,-1], \
+    grid[-1,::-1], grid[-2:0:-1,0]])
+  return np.append(edges, grid[0][0])
+
+# Returns 1 if the point is a true ridge ending, zero otherwise
+def identifyRidgeEnding(grid, x, y):
+  # Initialize markings
+  mark = np.zeros((len(grid), len(grid[0])))
+  mark[x][y] = 1
+  q = queue.Queue()
+  q.put((x, y))
+
+  while not q.empty():
+    point = q.get()
+    i = point[0]
+    j = point[1]
+
+    lowX = max(i - 1, 0)
+    highX = min(i + 1, len(grid) - 1)
+    lowY = max(j - 1, 0)
+    highY = min(j + 1, len(grid[i]) - 1)
+
+    for k in range(lowX, highX + 1):
+      for l in range(lowY, highY + 1):
+        if grid[k][l]:
+          if not mark[k][l]:
+            mark[k][l] = 1
+            q.put((k, l))
+
+  edges = gridEdges(mark)
+  transitions = 0
+
+  for i in range(len(edges) - 1):
+    if edges[i + 1] == 1 and edges[i] == 0:
+      transitions = transitions + 1
+
+  if transitions == 1:
+    return 1
+  else:
+    return 0
+
+# Returns 2 if the point is a true bifurcation, zero otherwise
+def identifyBifurcation(grid, x, y):
+  # Initialize markings
+  mark = np.zeros((len(grid), len(grid[0])))
+  mark[x][y] = -1
+  q = queue.Queue()
+  q.put((x, y))
+
+  while not q.empty():
+    point = q.get()
+    i = point[0]
+    j = point[1]
+
+    label = mark[i][j]
+    if label == -1:
+      label = 1
+
+    lowX = max(i - 1, 0)
+    highX = min(i + 1, len(grid) - 1)
+    lowY = max(j - 1, 0)
+    highY = min(j + 1, len(grid[i]) - 1)
+
+    for k in range(lowX, highX + 1):
+      for l in range(lowY, highY + 1):
+        if grid[k][l]:
+          if not mark[k][l]:
+            mark[k][l] = label
+            if mark[i][j] == -1:
+              label = label + 1
+            q.put((k, l))
+
+  edges = gridEdges(mark)
+  trans1 = 0
+  trans2 = 0
+  trans3 = 0
+
+  for i in range(len(edges) - 1):
+    if edges[i + 1] == 1 and edges[i] == 0:
+      trans1 = trans1 + 1
+    if edges[i + 1] == 2 and edges[i] == 0:
+      trans2 = trans2 + 1
+    if edges[i + 1] == 3 and edges[i] == 0:
+      trans3 = trans3 + 1
+
+  if trans1 == 1 and trans2 == 1 and trans3 == 1:
+    return 2
+  else:
+    return 0
+
+# Minutiae post-processing to reduce false positives
+def cleanup(img, min_img):
+  # Parameters
+  filterSize = 23
+  dist = int(filterSize / 2)
+
+  for i in range(1, len(img) - 1):
+    for j in range(1, len(img[i] - 1)):
+      if not min_img[i][j]:
+        continue
+
+      lowX = max(i - dist, 0)
+      highX = min(i + dist, len(img))
+      lowY = max(j - dist, 0)
+      highY = min(j + dist, len(img[i]))
+
+      x = i - lowX
+      y = j - lowY
+      grid = img[lowX:highX, lowY:highY]
+
+      # Ridge ending
+      if (min_img[i][j] == 1):
+        min_img[i][j] = identifyRidgeEnding(grid, x, y)
+      # Bifurcation
+      else:
+        min_img[i][j] = identifyBifurcation(grid, x, y)
+
+  return min_img
 
 # Extracts minutiae from a binary image
 # Returns binary image of minutiae and coordinates
-def extract(img):
+def extract(img, seg):
   # Initialize output image and coordinates
   out = np.zeros((len(img), len(img[0])))
   coords = []
 
-  for i in range(len(img)):
-    for j in range(len(img[i])):
+  for i in range(1, len(img) - 1):
+    for j in range(1, len(img[i]) - 1):
       # Must be edge point
       if not img[i][j]:
+        continue
+
+      # Must be part of foreground
+      if not seg[i][j]:
         continue
 
       # Utility variable for counting minutiae in an image
       numPoints = 0
 
-      # Establish bounds for crossing number filter
-      lowX = max(i - 1, 0)
-      highX = min(i + 1, len(img) - 1)
-      lowY = max(j - 1, 0)
-      highY = min(j + 1, len(img[i]) - 1)
+      # Compute the crossing number
+      cn = 0
+      cn = cn + abs(img[i + 1][j] - img[i + 1][j + 1])
+      cn = cn + abs(img[i + 1][j + 1] - img[i][j + 1])
+      cn = cn + abs(img[i][j + 1] - img[i - 1][j + 1])
+      cn = cn + abs(img[i - 1][j + 1] - img[i - 1][j])
+      cn = cn + abs(img[i - 1][j] - img[i - 1][j - 1])
+      cn = cn + abs(img[i - 1][j - 1] - img[i][j - 1])
+      cn = cn + abs(img[i][j - 1] - img[i + 1][j - 1])
+      cn = cn + abs(img[i + 1][j - 1] - img[i + 1][j])
+      cn = int(cn / 2)
 
-      # Count the number of other edge points in a 3x3 grid
-      count = 0
-
-      for k in range(lowX, highX + 1):
-        for l in range(lowY, highY + 1):
-          count = count + img[k][l]
-
-      # 1 other point == ridge ending
-      if count == 2:
+      # cn == 1 => ridge ending
+      if cn == 1:
         out[i][j] = 1
         numPoints = numPoints + 1
         coords.append(np.array((i, j)))
-      # 3 other points == bifurcation
-      elif count == 4:
+      # cn == 3 => bifurcation
+      elif cn == 3:
         out[i][j] = 2
         numPoints = numPoints + 1
         coords.append(np.array((i, j)))
 
   # print(numPoints)
 
+  # Cleanup minutiae
+  clean = cleanup(img, out)
+
   # Return binarized image and coordinates
-  return (out >= 1) * 1, coords
+  return (clean >= 1) * 1, coords
 
 # Wraps angles from [-2pi, 2pi] to [0, 2pi]
 def wrapAngle(theta):
