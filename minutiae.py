@@ -2,8 +2,6 @@
 # Max Granat - mg46424
 
 import numpy as np
-import cv2
-from imageProcessing import displayBinary
 import queue
 
 # Returns the edges of an array as an array, wrapping aroudn
