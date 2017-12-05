@@ -7,6 +7,7 @@ import cv2
 import imageProcessing
 import minutiae
 import os
+import profile
 
 def main():
   path = "Max\\School\\sticky-fingers\\figs\\png_txt\\figs_0"
@@ -25,5 +26,7 @@ def main():
         #out = np.hstack((enhanced, min_img))
         out = np.hstack((equalized, gabor))
         imageProcessing.display(out)
+        return
 
+# profile.run('main()', sort = 'cumtime')
 main()

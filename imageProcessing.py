@@ -8,6 +8,7 @@ from skimage.morphology import thin
 import pdb
 import scipy
 import time
+import peakutils
 
 # Utility function for displaying a grayscale image
 def display(img):
@@ -124,6 +125,20 @@ def estimateOrientation(img, xBlocks, yBlocks):
 
   return blockOrientation
 
+# Implements the ramp function
+def ramp(x):
+  if x <= 0:
+    return 0
+  else:
+    return x
+
+# Implements the unit step function
+def step(x):
+  if x <= 0:
+    return 0
+  else:
+    return 1
+
 # Estimate the ridge frequency of each image block
 def estimateFrequency(img, orientation):
   m = len(img)
@@ -132,57 +147,94 @@ def estimateFrequency(img, orientation):
   yBlocks = len(orientation[0])
   xSize = int(m / xBlocks)
   ySize = int(n / yBlocks)
-  freqAvg = 9.2732
-  freqRange = 1.8985
-  devs = 1
-  freqLo = freqAvg - devs * freqRange 
-  freqHi = freqAvg + devs * freqRange
-  blurSize = (3, 3)
+  l = 32
+  w = 16
+  wavelengthMin = 2 # Based on 350 DPI image
+  wavelengthMax = 18 # Based on 350 DPI image
+  # wavelengthMin = 5
+  # wavelengthMax = 14
+  gaussianSize = 7
+  gaussianKSize = (gaussianSize, gaussianSize)
+  gaussianStdDev = 3
+  gRange = int(gaussianSize / 2)
 
   freqs = np.zeros((xBlocks, yBlocks))
-  freqCounts = []
-
+  
+  
+  # Compute well-defined frequencies
   for i in range(xBlocks):
     for j in range(yBlocks):
-      block = img[i*xSize:(i+1)*xSize, j*ySize:(j+1)*ySize]
       theta = orientation[i, j]
+      cosTheta = np.cos(theta)
+      sinTheta = np.sin(theta)
 
-      rotated = scipy.ndimage.interpolation.rotate(block, \
-        np.degrees(-theta))
+      # Extract x-signature
+      xSig = np.zeros(l)
+      for k in range(l):
+        accum = 0
+        divisor = w
 
-      signal = rotated[int(xSize / 2), :]
+        for d in range(w):
+          u = int(np.rint(i+(d-w/2)*cosTheta+(k-l/2)*sinTheta))
+          v = int(np.rint(j+(d-w/2)*sinTheta+(l/2-k)*cosTheta))
+          
+          if u >= 0 and v >= 0 and u < m and v < n:
+            accum = accum + img[u, v]
+          else:
+            divisor = divisor - 1
 
-      # Find zero crossings, assume image has been normalized
-      crossings = np.where((signal.astype(np.int16)[:-1] - 127) * \
-        (signal.astype(np.int16)[1:] - 127) < 0)[0]
+        if divisor != 0:
+          accum = accum / divisor
 
-      if len(crossings) < 4:
-        freqs[i, j] = 0
-        continue
+        xSig[k] = accum
 
-      distances = np.absolute(crossings[:-1] - crossings[1:])
-      freq = np.median(distances)
+      peaks = scipy.signal.find_peaks_cwt(xSig, \
+        np.arange(wavelengthMin, wavelengthMax + 1))
+      
+      if len(peaks) >= 2:
+        dists = peaks[1:] - peaks[:-1]
+        avg = np.average(dists)
 
-      if freq < freqLo:
-        freq = 0
-      elif freq > freqHi:
-        freq = 0
+        if avg >= wavelengthMin and avg <= wavelengthMax:
+          freqs[i, j] = 1 / avg
+        else:
+          freqs[i, j] = -1
       else:
-        freqCounts.append(freq)
+        freqs[i, j] = -1
 
-      freqs[i, j] = freq
+  kernel1D = cv2.getGaussianKernel(gaussianSize, gaussianStdDev)
+  kernel = np.matmul(kernel1D, np.transpose(kernel1D))
 
-  if len(freqCounts) == 0:
-    mid = freqAvg
-  else:
-    mid = np.average(freqCounts)
+  newFreqs = freqs.copy()
 
-  freqLo = mid - devs * freqRange 
-  freqHi = mid + devs * freqRange
+  while (freqs == -1).any():
+    for i in range(xBlocks):
+      for j in range(yBlocks):
+        if freqs[i, j] != -1:
+          continue
 
-  freqs = np.where((freqs < freqLo) | (freqs > freqHi), mid, freqs)
+        lowX = max(i - gRange, 0)
+        highX = min(i + gRange, xBlocks - 1)
+        lowY = max(j - gRange, 0)
+        highY = min(j + gRange, yBlocks - 1)
 
-  return cv2.GaussianBlur(freqs, blurSize, 0)
+        num = 0
+        denom = 0
+
+        for p in range(lowX, highX + 1):
+          for q in range(lowY, highY + 1):
+            kval = kernel[gRange + i - p, gRange + j - q]
+            num = num + kval * ramp(freqs[p, q])
+            denom = denom + kval * step(freqs[p, q] + 1)
+
+        if denom == 0:
+          newFreqs[i, j] = -1
+        else:
+          newFreqs[i, j] = num / denom
+
+        freqs = newFreqs.copy()
+
+  return cv2.GaussianBlur(freqs, gaussianKSize, 0)
 
 # Gabor filtering
 def gabor(img):
@@ -197,15 +249,8 @@ def gabor(img):
   # Initialize output image
   outImg = np.zeros((m, n))
 
-  start = time.time()
-  blockOrientation = estimateOrientation(img, xBlocks, yBlocks)  
-  end = time.time()
-  print("Orientation: " + str(end - start))
-
-  start = time.time()
+  blockOrientation = estimateOrientation(img, xBlocks, yBlocks)
   freqs = estimateFrequency(img, blockOrientation)
-  end = time.time()
-  print("Frequency: " + str(end - start))
 
   # Perform Gabor filtering by block
   for i in range(xBlocks):
@@ -214,7 +259,7 @@ def gabor(img):
       ridgeOrientation = blockOrientation[i, j]
 
       # Ridge frequency estimation by block
-      ridgeWavelength = freqs[i, j]
+      ridgeWavelength = 1 / freqs[i, j]
       # ridgeWavelength = 9.2732
 
       # Compute Gabor kernel
