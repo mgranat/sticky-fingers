@@ -7,12 +7,17 @@ import cv2
 from skimage.morphology import thin
 import pdb
 import scipy
+import time
+
+# Utility function for displaying a grayscale image
+def display(img):
+  cv2.imshow("image", img.astype(np.uint8))
+  cv2.waitKey(0)
+  cv2.destroyAllWindows()
 
 # Utility function for displaying a binary image
 def displayBinary(img):
-  cv2.imshow("image", (img * 255).astype(np.uint8))
-  cv2.waitKey(0)
-  cv2.destroyAllWindows()
+  display(img * 255)
 
 # Returns a binary image indicating fore/background
 def segmentation(img):
@@ -80,6 +85,7 @@ def visualizeOrientation(img, orientation):
 
   displayBinary(imgCopy)
 
+# Estimate the orientation of each image block
 def estimateOrientation(img, xBlocks, yBlocks):
   # Parameters
   m = len(img)
@@ -116,10 +122,9 @@ def estimateOrientation(img, xBlocks, yBlocks):
       yInd = yRange + j * ySize
       blockOrientation[i, j] = localOrientation[xInd, yInd]
 
-  # visualizeOrientation(img, blockOrientation)
-
   return blockOrientation
 
+# Estimate the ridge frequency of each image block
 def estimateFrequency(img, orientation):
   m = len(img)
   n = len(img[0])
@@ -192,8 +197,15 @@ def gabor(img):
   # Initialize output image
   outImg = np.zeros((m, n))
 
+  start = time.time()
   blockOrientation = estimateOrientation(img, xBlocks, yBlocks)  
+  end = time.time()
+  print("Orientation: " + str(end - start))
+
+  start = time.time()
   freqs = estimateFrequency(img, blockOrientation)
+  end = time.time()
+  print("Frequency: " + str(end - start))
 
   # Perform Gabor filtering by block
   for i in range(xBlocks):
