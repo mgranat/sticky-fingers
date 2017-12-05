@@ -3,12 +3,23 @@
 
 import numpy as np
 import queue
+import cv2
+import pdb
 
 # Returns the edges of an array as an array, wrapping aroudn
 def gridEdges(grid):
   edges = np.concatenate([grid[0,:-1], grid[:-1,-1], \
     grid[-1,::-1], grid[-2:0:-1,0]])
   return np.append(edges, grid[0][0])
+
+# Draw circles around minutiae
+def visualize(img, coords):
+  radius = 5
+
+  for (j, i) in coords:
+    cv2.circle(img, (i, j), radius, 1)
+
+  return img
 
 # Returns 1 if the point is a true ridge ending, zero otherwise
 def identifyRidgeEnding(grid, x, y):
@@ -128,9 +139,8 @@ def cleanup(img, min_img):
 # Extracts minutiae from a binary image
 # Returns binary image of minutiae and coordinates
 def extract(img, seg):
-  # Initialize output image and coordinates
+  # Initialize output image
   out = np.zeros((len(img), len(img[0])))
-  coords = []
 
   for i in range(1, len(img) - 1):
     for j in range(1, len(img[i]) - 1):
@@ -161,17 +171,19 @@ def extract(img, seg):
       if cn == 1:
         out[i][j] = 1
         numPoints = numPoints + 1
-        coords.append(np.array((i, j)))
       # cn == 3 => bifurcation
       elif cn == 3:
         out[i][j] = 2
         numPoints = numPoints + 1
-        coords.append(np.array((i, j)))
-
-  # print(numPoints)
 
   # Cleanup minutiae
   clean = cleanup(img, out)
+  coordsArray = clean.nonzero()
+
+  coords = []
+  for i in range(len(coordsArray[0])):
+    # pdb.set_trace()
+    coords.append((coordsArray[0][i], coordsArray[1][i]))
 
   # Return binarized image and coordinates
   return (clean >= 1) * 1, coords

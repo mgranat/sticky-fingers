@@ -10,7 +10,7 @@ import scipy
 
 # Utility function for displaying a binary image
 def displayBinary(img):
-  cv2.imshow("image", (img * 1).astype(np.uint8))
+  cv2.imshow("image", (img * 255).astype(np.uint8))
   cv2.waitKey(0)
   cv2.destroyAllWindows()
 
@@ -116,7 +116,7 @@ def estimateOrientation(img, xBlocks, yBlocks):
       yInd = yRange + j * ySize
       blockOrientation[i, j] = localOrientation[xInd, yInd]
 
-  visualizeOrientation(img, blockOrientation)
+  # visualizeOrientation(img, blockOrientation)
 
   return blockOrientation
 
@@ -167,7 +167,11 @@ def estimateFrequency(img, orientation):
 
       freqs[i, j] = freq
 
-  mid = np.average(freqCounts)
+  if len(freqCounts) == 0:
+    mid = freqAvg
+  else:
+    mid = np.average(freqCounts)
+
   freqLo = mid - devs * freqRange 
   freqHi = mid + devs * freqRange
 
@@ -180,8 +184,8 @@ def gabor(img):
   # Parameters
   m = len(img)
   n = len(img[0])
-  xBlocks = 16
-  yBlocks = 16
+  xBlocks = 32
+  yBlocks = 32
   xSize = int(m / xBlocks)
   ySize = int(n / yBlocks)
 
@@ -196,7 +200,6 @@ def gabor(img):
     for j in range(yBlocks):
       # Orientation estimation
       ridgeOrientation = blockOrientation[i, j]
-      #ridgeOrientation = 3 * np.pi / 2
 
       # Ridge frequency estimation by block
       ridgeWavelength = freqs[i, j]
@@ -218,7 +221,7 @@ def gabor(img):
       block = filtered[i*xSize:(i+1)*xSize, j*ySize:(j+1)*ySize]
       outImg[i*xSize:(i+1)*xSize, j*ySize:(j+1)*ySize] = block
 
-  return outImg
+  return (255 - outImg).astype(np.uint8)
 
 # Enhances a fingerprint image, returns image and segmentation
 def enhance(img):
@@ -237,6 +240,7 @@ def enhance(img):
 
   # Enhance and binarize image
   blurred = cv2.GaussianBlur(filtered, gaussianBlurSize, 0)
+  # pdb.set_trace()
   binarized = cv2.adaptiveThreshold(blurred, 255, \
     cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, \
     thresholdSize, thresholdShift)
