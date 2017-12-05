@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from skimage.morphology import thin
 import pdb
+import scipy
 
 # Utility function for displaying a binary image
 def displayBinary(img):
@@ -119,13 +120,68 @@ def estimateOrientation(img, xBlocks, yBlocks):
 
   return blockOrientation
 
+def estimateFrequency(img, orientation):
+  m = len(img)
+  n = len(img[0])
+  xBlocks = len(orientation)
+  yBlocks = len(orientation[0])
+  xSize = int(m / xBlocks)
+  ySize = int(n / yBlocks)
+  freqAvg = 9.2732
+  freqRange = 1.8985
+  devs = 1
+  freqLo = freqAvg - devs * freqRange 
+  freqHi = freqAvg + devs * freqRange
+  blurSize = (3, 3)
+
+  freqs = np.zeros((xBlocks, yBlocks))
+  freqCounts = []
+
+  for i in range(xBlocks):
+    for j in range(yBlocks):
+      block = img[i*xSize:(i+1)*xSize, j*ySize:(j+1)*ySize]
+      theta = orientation[i, j]
+
+      rotated = scipy.ndimage.interpolation.rotate(block, \
+        np.degrees(-theta))
+
+      signal = rotated[int(xSize / 2), :]
+
+      # Find zero crossings, assume image has been normalized
+      crossings = np.where((signal.astype(np.int16)[:-1] - 127) * \
+        (signal.astype(np.int16)[1:] - 127) < 0)[0]
+
+      if len(crossings) < 4:
+        freqs[i, j] = 0
+        continue
+
+      distances = np.absolute(crossings[:-1] - crossings[1:])
+      freq = np.median(distances)
+
+      if freq < freqLo:
+        freq = 0
+      elif freq > freqHi:
+        freq = 0
+      else:
+        freqCounts.append(freq)
+
+      freqs[i, j] = freq
+
+  mid = np.average(freqCounts)
+  freqLo = mid - devs * freqRange 
+  freqHi = mid + devs * freqRange
+
+  freqs = np.where((freqs < freqLo) | (freqs > freqHi), mid, freqs)
+
+  return cv2.GaussianBlur(freqs, blurSize, 0)
+
 # Gabor filtering
 def gabor(img):
   # Parameters
   m = len(img)
   n = len(img[0])
-  xBlocks = 32
-  yBlocks = 32
+  xBlocks = 16
+  yBlocks = 16
   xSize = int(m / xBlocks)
   ySize = int(n / yBlocks)
 
@@ -133,6 +189,7 @@ def gabor(img):
   outImg = np.zeros((m, n))
 
   blockOrientation = estimateOrientation(img, xBlocks, yBlocks)  
+  freqs = estimateFrequency(img, blockOrientation)
 
   # Perform Gabor filtering by block
   for i in range(xBlocks):
@@ -142,7 +199,8 @@ def gabor(img):
       #ridgeOrientation = 3 * np.pi / 2
 
       # Ridge frequency estimation by block
-      ridgeWavelength = 9.2732
+      ridgeWavelength = freqs[i, j]
+      # ridgeWavelength = 9.2732
 
       # Compute Gabor kernel
       ksize = (11, 11)
@@ -151,8 +209,9 @@ def gabor(img):
       wavelength = ridgeWavelength
       aspectRatio = 1
 
+      # Get even-symmetric (phi = 0) Gabor kernel
       gaborKernel = cv2.getGaborKernel(ksize, stdDev, \
-        orientation, wavelength, aspectRatio)
+        orientation, wavelength, aspectRatio, 0)
 
       # Filter and transfer block
       filtered = cv2.filter2D(img, -1, gaborKernel)
