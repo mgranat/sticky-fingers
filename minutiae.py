@@ -17,7 +17,7 @@ def visualize(img, coords):
   radius = 5
 
   for (j, i) in coords:
-    cv2.circle(img, (i, j), radius, 1)
+    cv2.circle(img, (i, j), radius, 255)
 
   return img
 

@@ -5,10 +5,7 @@
 import numpy as np
 import cv2
 from skimage.morphology import thin
-import pdb
 import scipy
-import time
-import peakutils
 
 # Utility function for displaying a grayscale image
 def display(img):
@@ -61,7 +58,7 @@ def visualizeOrientation(img, orientation):
   yBlocks = len(orientation[0])
   xSize = int(len(img) / xBlocks)
   ySize = int(len(img[0]) / yBlocks)
-  imgCopy = np.copy(img)
+  imgCopy = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB) * 0.6
 
   # Drawing coordinates are transpose of image coordinates
   orientation = np.transpose(orientation)
@@ -82,9 +79,9 @@ def visualizeOrientation(img, orientation):
       x1 = x1 + xStart + int(xSize / 2)
       y1 = y1 + yStart + int(ySize / 2)
 
-      cv2.line(imgCopy, (x0, y0), (x1, y1), 255)
+      cv2.line(imgCopy, (x0, y0), (x1, y1), (255, 255, 255))
 
-  displayBinary(imgCopy)
+  display(imgCopy)
 
 # Estimate the orientation of each image block
 def estimateOrientation(img, xBlocks, yBlocks):
@@ -280,6 +277,21 @@ def gabor(img):
 
   return (255 - outImg).astype(np.uint8)
 
+# Implements region masking
+def getRegionMask(img, xBlocks, yBlocks):
+  r = xBlocks / 2
+  factor = 0.8
+  mask = np.zeros((xBlocks, yBlocks))
+  for i in range(xBlocks):
+    for j in range(yBlocks):
+      mask[i, j] = (np.square(i - r) + \
+        np.square(j - r) <= np.square(factor * r)) * 1
+
+  dims = (len(img), len(img[0]))
+  outMask = cv2.resize(mask, dims, \
+    interpolation=cv2.INTER_NEAREST)
+  return outMask
+
 # Enhances a fingerprint image, returns image and segmentation
 def enhance(img):
   # Parameters
@@ -287,17 +299,20 @@ def enhance(img):
   thresholdSize = 25
   thresholdShift = 8
   morphologySize = (3, 3)
+  xBlocks = 32
+  yBlocks = 32
 
   # Segment and equalize image
   segmented = segmentation(img)
   equalized = cv2.equalizeHist(img)
 
-  # Perform Gabor filtering
+  # Perform Gabor filtering and region masking
   filtered = gabor(equalized)
+  regionMask = getRegionMask(filtered, xBlocks, yBlocks)
+  segmented = np.multiply(segmented, regionMask)
 
   # Enhance and binarize image
   blurred = cv2.GaussianBlur(filtered, gaussianBlurSize, 0)
-  # pdb.set_trace()
   binarized = cv2.adaptiveThreshold(blurred, 255, \
     cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, \
     thresholdSize, thresholdShift)
