@@ -304,6 +304,7 @@ def match(p_orig, q_orig):
   found = False
 
   for i in range(m):
+    print("Trying match: " + str(i) + " of " + str(m) + " (vs. " + str(n) + ")")
     for a in range(n):
       # Calculate support for p[i] <-> q[a]
       w = support(p, q, i, a, matchFlags)
