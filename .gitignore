@@ -1,8 +1,10 @@
 figs/*
 resources/*
+presentation/*
 *.png
 *.pdf
 *.docx
+stats.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
