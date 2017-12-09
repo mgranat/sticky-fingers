@@ -182,7 +182,6 @@ def extract(img, seg):
 
   coords = []
   for i in range(len(coordsArray[0])):
-    # pdb.set_trace()
     coords.append((coordsArray[0][i], coordsArray[1][i]))
 
   # Return binarized image and coordinates

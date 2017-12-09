@@ -137,7 +137,7 @@ def step(x):
     return 1
 
 # Estimate the ridge frequency of each image block
-def estimateFrequency(img, orientation):
+def estimateFrequency(img, orientation, estimator = None):
   m = len(img)
   n = len(img[0])
   xBlocks = len(orientation)
@@ -156,7 +156,8 @@ def estimateFrequency(img, orientation):
   gRange = int(gaussianSize / 2)
 
   freqs = np.zeros((xBlocks, yBlocks))
-  
+  stats = []
+  labels = np.ones((xBlocks, yBlocks)) * -1
   
   # Compute well-defined frequencies
   for i in range(xBlocks):
@@ -191,6 +192,20 @@ def estimateFrequency(img, orientation):
       if len(peaks) >= 2:
         dists = peaks[1:] - peaks[:-1]
         avg = np.average(dists)
+
+        # Compute statistics
+        valleys = ((peaks[1:] + peaks[:-1]) / 2).astype(np.int)
+        avgPeak = np.average([p for ind, p in enumerate(xSig) if ind in peaks])
+        avgValley = np.average([v for ind, v in enumerate(xSig) if ind in valleys])
+        alpha = avgPeak - avgValley
+        beta = avg
+        gamma = np.var(xSig)
+
+        stats.extend([alpha, beta, gamma])
+
+        if estimator is not None:
+          label = estimator.predict([[alpha, beta, gamma]])
+          labels[i, j] = label
 
         if avg >= wavelengthMin and avg <= wavelengthMax:
           freqs[i, j] = 1 / avg
@@ -231,7 +246,62 @@ def estimateFrequency(img, orientation):
 
         freqs = newFreqs.copy()
 
-  return cv2.GaussianBlur(freqs, gaussianKSize, 0)
+  return cv2.GaussianBlur(freqs, gaussianKSize, 0), np.array(stats), labels
+
+# Extract the frequency statistics from an image
+def extractFreqStats(img):
+  m = len(img)
+  n = len(img[0])
+  xBlocks = 32
+  yBlocks = 32
+  xSize = int(m / xBlocks)
+  ySize = int(n / yBlocks)
+
+  equalized = cv2.equalizeHist(img)
+  blockOrientation = estimateOrientation(equalized, xBlocks, yBlocks)
+  freqs, stats, labels = estimateFrequency(equalized, blockOrientation)
+
+  return stats
+
+# Convert a label image into a color image
+def convertLabels(labels):
+  colors = np.zeros((len(labels), len(labels[0]), 3))
+  for i in range(len(labels)):
+    for j in range(len(labels[i])):
+      label = labels[i, j]
+      if label == -1:
+        colors[i, j] = [0, 0, 0]
+      elif label == 0:
+        colors[i, j] = [0, 0, 255]
+      elif label == 1:
+        colors[i, j] = [0, 255, 255]
+      elif label == 2:
+        colors[i, j] = [0, 255, 0]
+      elif label == 3:
+        colors[i, j] = [255, 0, 0]
+      elif label == 4:
+        colors[i, j] = [255, 102, 255]
+      elif label == 5:
+        colors[i, j] = [255, 255, 255]
+  return colors.astype(np.uint8)
+
+# Visualize the clusters of image blocks
+def visualizeClusters(img, estimator):
+  m = len(img)
+  n = len(img[0])
+  xBlocks = 32
+  yBlocks = 32
+  xSize = int(m / xBlocks)
+  ySize = int(n / yBlocks)
+
+  equalized = cv2.equalizeHist(img)
+  blockOrientation = estimateOrientation(equalized, xBlocks, yBlocks)
+  freqs, stats, labels = estimateFrequency(equalized, blockOrientation, estimator)
+  colors = convertLabels(labels)
+  colors = cv2.resize(colors, (m, n), interpolation = cv2.INTER_NEAREST)
+
+  colorImg = cv2.cvtColor(equalized, cv2.COLOR_GRAY2RGB)
+  display(cv2.addWeighted(colors, 0.5, colorImg, 0.5, 0))
 
 # Gabor filtering
 def gabor(img):
@@ -247,7 +317,7 @@ def gabor(img):
   outImg = np.zeros((m, n))
 
   blockOrientation = estimateOrientation(img, xBlocks, yBlocks)
-  freqs = estimateFrequency(img, blockOrientation)
+  freqs, stats, labels = estimateFrequency(img, blockOrientation)
 
   # Perform Gabor filtering by block
   for i in range(xBlocks):
@@ -257,7 +327,6 @@ def gabor(img):
 
       # Ridge frequency estimation by block
       ridgeWavelength = 1 / freqs[i, j]
-      # ridgeWavelength = 9.2732
 
       # Compute Gabor kernel
       ksize = (11, 11)

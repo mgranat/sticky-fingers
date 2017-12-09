@@ -7,11 +7,11 @@ import cv2
 import imageProcessing
 import minutiae
 import os
-import profile
 import time
 import sys
 import random
-import pdb
+import pickle
+from sklearn.cluster import KMeans
 
 def match(first, second):
   img = cv2.imread(first, 0)
@@ -82,8 +82,77 @@ def test(numTrials):
   print("Avg Incorrect Score: " + str(np.average(incorrectResults)))
   print("Incorrect variance: " + str(np.var(incorrectResults)))
 
+def test2(numTrials):
+  allImgs = ".\\figs\\png_txt\\"
+  imgDirs = os.listdir(allImgs)
+  firstFiles = []
+  secondFiles = []
+  for d in imgDirs:
+    imgDir = os.path.join(allImgs, d)
+    imgFiles = [os.path.join(imgDir, f) \
+    for f in os.listdir(imgDir) \
+    if f.endswith(".png") and f.startswith("s")]
+    secondFiles.extend(imgFiles)
+    imgFiles = [os.path.join(imgDir, f) \
+    for f in os.listdir(imgDir) \
+    if f.endswith(".png") and f.startswith("f")]
+    firstFiles.extend(imgFiles)
+
+  estimator = pickle.load(open("estimator.sav", 'rb'))
+
+  # Correct trials
+  for i in range(numTrials):
+    ind = int(random.random() * len(firstFiles))
+    first = firstFiles[ind]
+    second = secondFiles[ind]
+
+    img = cv2.imread(first, 0)
+    img2 = cv2.imread(second, 0)
+
+    imageProcessing.visualizeClusters(img, estimator)
+    imageProcessing.visualizeClusters(img2, estimator)
+
+# Extract block statistics
+def extractStats():
+  allImgs = ".\\figs\\png_txt\\"
+  imgDirs = os.listdir(allImgs)
+  firstFiles = []
+  secondFiles = []
+  for d in imgDirs:
+    imgDir = os.path.join(allImgs, d)
+    imgFiles = [os.path.join(imgDir, f) \
+    for f in os.listdir(imgDir) \
+    if f.endswith(".png") and f.startswith("s")]
+    secondFiles.extend(imgFiles)
+    imgFiles = [os.path.join(imgDir, f) \
+    for f in os.listdir(imgDir) \
+    if f.endswith(".png") and f.startswith("f")]
+    firstFiles.extend(imgFiles)
+
+  stats = np.empty(0)
+
+  for i in range(len(firstFiles)):
+    file = firstFiles[i]
+    file2 = secondFiles[i]
+    img = cv2.imread(file, 0)
+    img2 = cv2.imread(file, 0)
+    start = time.time()
+    imgStats = imageProcessing.extractFreqStats(img)
+    imgStats2 = imageProcessing.extractFreqStats(img2)
+    stats = np.concatenate([stats, imgStats, imgStats2])
+    end = time.time()
+    print("Extracted stats for img pair " + str(i) + ": " + str(end - start))
+
+  np.save("block_stats", stats)
+
+def cluster():
+  stats = np.load("block_stats.npy").reshape((-1, 3))
+  kmeans = KMeans(n_clusters = 6, verbose = 1).fit(stats)
+  pickle.dump(kmeans, open("estimator.sav", 'wb'))
+
 def main():
   if len(sys.argv) < 2:
+    print("use test or test2 with a number of tests, extract, or cluster")
     return
 
   if sys.argv[1] == 'test':
@@ -92,6 +161,12 @@ def main():
 
     numTrials = int(sys.argv[2])
     test(numTrials)
+  elif sys.argv[1] == 'test2':
+    if len(sys.argv) < 3:
+      return
+
+    numTrials = int(sys.argv[2])
+    test2(numTrials)
   elif sys.argv[1] == 'extract':
     extractStats()
   elif sys.argv[1] == 'cluster':
