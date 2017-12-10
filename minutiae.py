@@ -4,7 +4,6 @@
 import numpy as np
 import queue
 import cv2
-import pdb
 
 # Returns the edges of an array as an array, wrapping aroudn
 def gridEdges(grid):
@@ -319,7 +318,7 @@ def match(p_orig, q_orig):
         found = True
         break
       # Patterns match if the maximum number of points match
-      if pmax >= k - i:
+      if pmax >= m - i:
         found = True
         break
     if found:

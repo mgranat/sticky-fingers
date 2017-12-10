@@ -55,15 +55,21 @@ def test(numTrials):
     if f.endswith(".png") and f.startswith("f")]
     firstFiles.extend(imgFiles)
 
+  threshold = 0.225
   correctResults = []
+  correct = 0
 
   # Correct trials
   for i in range(numTrials):
     ind = int(random.random() * len(firstFiles))
     first = firstFiles[ind]
     second = secondFiles[ind]
-    
-    correctResults.append(match(first, second))
+
+    score = match(first, second)
+    correctResults.append(score)
+
+    if score >= threshold:
+      correct = correct + 1
 
   incorrectResults = []
 
@@ -71,16 +77,24 @@ def test(numTrials):
   for i in range(numTrials):
     firstInd = int(random.random() * len(firstFiles))
     secondInd = int(random.random() * len(secondFiles))
+    if firstInd == secondInd:
+      i = i - 1
+      continue
     first = firstFiles[firstInd]
     second = secondFiles[secondInd]
     
-    incorrectResults.append(match(first, second))
+    score = match(first, second)
+    incorrectResults.append(score)
+
+    if score < threshold:
+      correct = correct + 1
 
   print("Final Results\n")
   print("Avg Correct Score: " + str(np.average(correctResults)))
   print("Correct variance: " + str(np.var(correctResults)))
   print("Avg Incorrect Score: " + str(np.average(incorrectResults)))
   print("Incorrect variance: " + str(np.var(incorrectResults)))
+  print("\nAccuracy: " + str(correct / (numTrials * 2)))
 
 def test2(numTrials):
   allImgs = ".\\figs\\png_txt\\"

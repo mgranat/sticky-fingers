@@ -7,6 +7,10 @@ import cv2
 from skimage.morphology import thin
 import scipy
 
+def writeOut(img, name):
+  filename = ".\\imgs\\" + name + ".jpg"
+  cv2.imwrite(filename, img)
+
 # Utility function for displaying a grayscale image
 def display(img):
   cv2.imshow("image", img.astype(np.uint8))
@@ -79,7 +83,7 @@ def visualizeOrientation(img, orientation):
       x1 = x1 + xStart + int(xSize / 2)
       y1 = y1 + yStart + int(ySize / 2)
 
-      cv2.line(imgCopy, (x0, y0), (x1, y1), (255, 255, 255))
+      cv2.line(imgCopy, (x0, y0), (x1, y1), (0, 255, 255))
 
   display(imgCopy)
 
@@ -301,7 +305,8 @@ def visualizeClusters(img, estimator):
   colors = cv2.resize(colors, (m, n), interpolation = cv2.INTER_NEAREST)
 
   colorImg = cv2.cvtColor(equalized, cv2.COLOR_GRAY2RGB)
-  display(cv2.addWeighted(colors, 0.5, colorImg, 0.5, 0))
+  outImg = cv2.addWeighted(colors, 0.5, colorImg, 0.5, 0)
+  display(outImg)
 
 # Gabor filtering
 def gabor(img):
@@ -393,6 +398,7 @@ def enhance(img):
 
   # Invert, binarize, and thin image
   binary = (closed < 127) * 1
+  # binary = (binarized < 127) * 1
   thinned = thin(binary) * 1
 
   return thinned, segmented
